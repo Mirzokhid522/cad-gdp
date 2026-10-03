@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canada Gross Domestic Product Tracker</title>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --notion-bg: #191919;
+            --notion-card: #202020;
+            --notion-border: rgba(255, 255, 255, 0.08);
+            --notion-text: #ffffff;
+            --notion-text-muted: #9b9a97;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background-color: var(--notion-bg);
+            color: var(--notion-text);
+            margin: 0;
+            padding: 40px 24px;
+        }
+
+        .header-container {
+            max-width: 1480px;
+            margin: 0 auto 35px auto;
+            border-bottom: 1px solid var(--notion-border);
+            padding-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 26px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .dashboard-grid {
+            max-width: 1480px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 36px;
+        }
+
+        .card {
+            background-color: var(--notion-card);
+            border: 1px solid var(--notion-border);
+            border-radius: 8px;
+            padding: 24px 24px 20px 24px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+        }
+
+        .card-header-row {
+            margin-bottom: 16px;
+        }
+
+        .card-title {
+            font-size: 17px;
+            font-weight: 600;
+            margin: 0 0 2px 0;
+            color: #f3f3f3;
+        }
+
+        .card-desc {
+            color: var(--notion-text-muted);
+            font-size: 12px;
+            margin: 0;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 440px;
+            width: 100%;
+        }
+
+        .loading {
+            text-align: center;
+            color: var(--notion-text-muted);
+            padding: 80px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-container">
+        <h1>Canada Gross Domestic Product Tracker</h1>
+    </div>
+
+    <div class="dashboard-grid" id="dashboard">
+        <div class="loading">Loading live macroeconomic data...</div>
+    </div>
+
+    <script>
+        async function loadDashboardData() {
+            try {
+                const response = await fetch('/api/labor-data');
+                const data = await response.json();
+
+                if (data.error) {
+                    document.getElementById('dashboard').innerHTML = `<div class="loading" style="color: #ff6b6b;">Error: ${data.error}</div>`;
+                    return;
+                }
+
+                const grid = document.getElementById('dashboard');
+                grid.innerHTML = `
+                    <div class="card">
+                        <div class="card-header-row">
+                            <h3 class="card-title">Real GDP ($ Millions, Chained 2017)</h3>
+                            <p class="card-desc">Monthly Gross Domestic Product at basic prices (Seasonally Adjusted)</p>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="gdpChart"></canvas>
+                        </div>
+                    </div>
+                `;
+
+                // Helper to compute dynamic bounds so small shifts are heavily exaggerated and clear
+                function getAxisBounds(values) {
+                    const min = Math.min(...values);
+                    const max = Math.max(...values);
+                    const padding = (max - min) * 0.4 || 1000;
+                    return {
+                        min: Math.floor((min - padding) / 100) * 100,
+                        max: Math.ceil((max + padding) / 100) * 100
+                    };
+                }
+
+                function createGDPChart(canvasId, values) {
+                    const bounds = getAxisBounds(values);
+                    const barColorHex = '#9b59b6';
+                    const barRgba = 'rgba(155, 89, 182, 0.75)';
+
+                    return new Chart(document.getElementById(canvasId), {
+                        type: 'bar',
+                        data: {
+                            labels: data.months,
+                            datasets: [
+                                {
+                                    type: 'bar',
+                                    label: 'Monthly GDP',
+                                    data: values,
+                                    backgroundColor: barRgba,
+                                    borderColor: barColorHex,
+                                    borderWidth: 0,
+                                    borderRadius: 2,
+                                    barPercentage: 0.82,
+                                    categoryPercentage: 0.92,
+                                    order: 2
+                                },
+                                {
+                                    type: 'line',
+                                    label: 'Trend',
+                                    data: values,
+                                    borderColor: '#f1c40f',
+                                    backgroundColor: 'transparent',
+                                    borderWidth: 2.5,
+                                    pointRadius: 2,
+                                    pointHoverRadius: 5,
+                                    pointBackgroundColor: '#f1c40f',
+                                    tension: 0.3,
+                                    order: 1
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false,
+                            },
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    backgroundColor: 'rgba(24, 24, 24, 0.95)',
+                                    titleFont: { size: 12 },
+                                    bodyFont: { size: 13, weight: '600' },
+                                    padding: 12,
+                                    borderColor: 'rgba(255, 255, 255, 0.15)',
+                                    borderWidth: 1,
+                                    cornerRadius: 4
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    grid: { color: 'rgba(255, 255, 255, 0.05)', drawBorder: false },
+                                    ticks: { color: '#8b8a87', font: { size: 11 }, maxTicksLimit: 14 }
+                                },
+                                y: {
+                                    min: bounds.min,
+                                    max: bounds.max,
+                                    grid: { color: 'rgba(255, 255, 255, 0.05)', drawBorder: false },
+                                    ticks: { color: '#8b8a87', font: { size: 11 }, padding: 6 }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                createGDPChart('gdpChart', data.gdp);
+
+            } catch (err) {
+                console.error("Failed to load chart data:", err);
+                document.getElementById('dashboard').innerHTML = `<div class="loading" style="color: #ff6b6b;">Failed to connect to backend API.</div>`;
+            }
+        }
+
+        loadDashboardData();
+    </script>
+</body>
+</html>
