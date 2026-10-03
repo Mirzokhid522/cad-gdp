@@ -7,6 +7,7 @@ from flask import Flask, jsonify, render_template
 app = Flask(__name__)
 
 STATCAN_GDP_URL = "https://www150.statcan.gc.ca/t1/wds/rest/getFullTableDownloadCSV/36100434/en"
+BOC_GDP_FORECAST_URL = "https://www.bankofcanada.ca/valet/observations/I_RGDP_P/json" # Bank of Canada real GDP projection series endpoint
 CACHED_DATA = None
 
 def load_and_cache_data():
@@ -59,9 +60,32 @@ def load_and_cache_data():
         gdp_agg["Month"] = gdp_agg["REF_DATE"].dt.strftime("%b %Y")
         gdp_agg = gdp_agg.sort_values("REF_DATE")
 
+        months = gdp_agg["Month"].tolist()
+        gdp_values = gdp_agg["VALUE"].tolist()
+
+        # Fetch Bank of Canada Forecast series to append outlook
+        print("-> [Startup] Fetching Bank of Canada GDP forecast series...")
+        try:
+            boc_resp = requests.get(BOC_GDP_FORECAST_URL, timeout=15)
+            if boc_resp.status_code == 200:
+                boc_json = boc_resp.json()
+                observations = boc_json.get("observations", [])
+                # Take recent forecast observations if available
+                last_hist_val = gdp_values[-1]
+                scaling_factor = last_hist_val / float(observations[0]["I_RGDP_P"]["v"]) if observations else 1.0
+                
+                # Append forecast points smoothly if they extend beyond history
+                for obs in observations[-6:]: # grab last few horizon points
+                    obs_date = pd.to_datetime(obs["d"])
+                    if obs_date > gdp_agg["REF_DATE"].max():
+                        months.append(obs_date.strftime("%b %Y (F)"))
+                        gdp_values.append(round(float(obs["I_RGDP_P"]["v"]) * scaling_factor, 2))
+        except Exception as boc_err:
+            print(f"[WARNING] Could not fetch BoC forecast data: {boc_err}")
+
         CACHED_DATA = {
-            "months": gdp_agg["Month"].tolist(),
-            "gdp": gdp_agg["VALUE"].tolist(),
+            "months": months,
+            "gdp": gdp_values,
         }
         print("-> [Startup] GDP data successfully processed and cached!")
     except Exception as e:
