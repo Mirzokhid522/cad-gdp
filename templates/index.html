@@ -53,13 +53,23 @@
         }
 
         .card-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
             margin-bottom: 16px;
+            gap: 16px;
+        }
+
+        .card-title-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
         }
 
         .card-title {
             font-size: 17px;
             font-weight: 600;
-            margin: 0 0 2px 0;
+            margin: 0;
             color: #f3f3f3;
         }
 
@@ -67,6 +77,22 @@
             color: var(--notion-text-muted);
             font-size: 12px;
             margin: 0;
+        }
+
+        .release-meta {
+            display: flex;
+            gap: 12px;
+            font-size: 11px;
+            color: var(--notion-text-muted);
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--notion-border);
+            padding: 6px 12px;
+            border-radius: 6px;
+            white-space: nowrap;
+        }
+
+        .release-meta span strong {
+            color: #d1d0c7;
         }
 
         .chart-container {
@@ -81,6 +107,16 @@
             padding: 80px;
             font-size: 14px;
         }
+
+        @media (max-width: 768px) {
+            .card-header-row {
+                flex-direction: column;
+            }
+            .release-meta {
+                width: 100%;
+                justify-content: space-between;
+            }
+        }
     </style>
 </head>
 <body>
@@ -94,6 +130,40 @@
     </div>
 
     <script>
+        // Custom lightweight Chart.js plugin to draw percentage change on top of bars
+        const percentagePlugin = {
+            id: 'percentagePlugin',
+            afterDatasetsDraw(chart) {
+                const { ctx } = chart;
+                const meta = chart.getDatasetMeta(0); // target the bar dataset
+
+                meta.data.forEach((bar, index) => {
+                    const currentVal = chart.data.datasets[0].data[index];
+                    
+                    // Skip if first item (no previous month to compare)
+                    if (index === 0) return;
+                    
+                    const prevVal = chart.data.datasets[0].data[index - 1];
+                    if (!prevVal || prevVal === 0) return;
+
+                    const pctChange = ((currentVal - prevVal) / prevVal) * 100;
+                    const sign = pctChange >= 0 ? '+' : '';
+                    const text = `${sign}${pctChange.toFixed(1)}%`;
+
+                    ctx.save();
+                    ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+                    ctx.fillStyle = pctChange >= 0 ? '#2ecc71' : '#e74c3c'; // Green for positive, red for negative
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+
+                    // Position text right above the top of the bar
+                    const position = bar.tooltipPosition();
+                    ctx.fillText(text, position.x, position.y - 6);
+                    ctx.restore();
+                });
+            }
+        };
+
         async function loadDashboardData() {
             try {
                 const response = await fetch('/api/labor-data');
@@ -108,8 +178,15 @@
                 grid.innerHTML = `
                     <div class="card">
                         <div class="card-header-row">
-                            <h3 class="card-title">Real GDP ($ Millions, Chained 2017)</h3>
-                            <p class="card-desc">Monthly Gross Domestic Product at basic prices (Seasonally Adjusted)</p>
+                            <div class="card-title-group">
+                                <h3 class="card-title">Real GDP ($ Millions, Chained 2017)</h3>
+                                <p class="card-desc">Monthly Gross Domestic Product at basic prices (Seasonally Adjusted)</p>
+                            </div>
+                            <div class="release-meta">
+                                <span>Released: <strong>September 30, 2026</strong></span>
+                                <span>•</span>
+                                <span>Next Release: <strong style="color: #f1c40f;">October 30, 2026</strong></span>
+                            </div>
                         </div>
                         <div class="chart-container">
                             <canvas id="gdpChart"></canvas>
@@ -196,7 +273,8 @@
                                     ticks: { color: '#8b8a87', font: { size: 11 }, padding: 6 }
                                 }
                             }
-                        }
+                        },
+                        plugins: [percentagePlugin]
                     });
                 }
 
